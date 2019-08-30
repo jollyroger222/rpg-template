@@ -1,7 +1,11 @@
+import json
+import struct
+
 import pygame
 from pygame import *
 from game_platform import *
 from player import Player
+import socket
 
 WIN_WIDTH = 800  # Ширина создаваемого окна
 WIN_HEIGHT = 640  # Высота
@@ -113,6 +117,11 @@ def main():
 
     camera = Camera(camera_configure, total_level_width, total_level_height)
 
+    # создаем сокет
+    sock = socket.socket()
+    # подключаемся к 127.0.0.1:9090
+    sock.connect(('127.0.0.1', 9090))
+
     while True:  # Основной цикл программы
         timer.tick(30)
 
@@ -144,14 +153,55 @@ def main():
         camera.update(hero)
         hero.update(left, right, up, down, platforms)
 
-        for e in entities:
-            screen.blit(e.image, camera.apply(e))
-
         for coin in coins:
             if sprite.collide_rect(hero, coin):
                 coins.remove(coin)
                 entities.remove(coin)
                 coins_count += 1
+
+        # network lets do it
+        while True:
+            size_byte = sock.recv(2)
+            if size_byte:
+                break
+        print(size_byte)
+        # переводим байты в число
+        size = struct.unpack('<H', size_byte)[0]
+        # принимаем JSON строку
+        data = b''
+        while len(data) < size:
+            data += sock.recv(size)
+
+        data = data.decode('utf-8')
+        # десереализуем ответ из JSON
+        answer = json.loads(data)
+        my_id = answer['id']
+
+        players = filter(lambda x:x['id'] != my_id, answer['players'])
+
+        data_to_send = {
+            "id": my_id,
+            "x": hero.rect.x,
+            "y": hero.rect.y,
+            "xvel": hero.xvel,
+            "yvel": hero.yvel,
+            "coins": coins_count,
+            "index": hero.index
+        }
+        data = json.dumps(data_to_send).encode('utf-8')
+        size = len(data)
+        byte_size = struct.pack('<H', size)
+        sock.send(byte_size)
+        sock.send(data)
+
+        for e in entities:
+            screen.blit(e.image, camera.apply(e))
+
+        for player in players:
+            guy = Player(0, 0)
+            guy.load(player)
+            screen.blit(guy.image, camera.apply(guy))
+
 
         textsurface = myfont.render(f'Coins: {coins_count}', False, (255, 255, 255))
         screen.blit(textsurface, (20, 20))

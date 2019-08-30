@@ -25,6 +25,23 @@ class Player(sprite.Sprite):
         self.index = 0
         self.image = self.images['down'][1]
 
+    def load(self, server_stats):
+        sprite.Sprite.__init__(self)
+        self.xvel = server_stats['xvel']
+        self.yvel = server_stats['yvel']
+        self.rect = Rect(server_stats['x'], server_stats['y'], WIDTH, HEIGHT)  # прямоугольный объект
+        self.index = server_stats['index']
+        self.image = self.images['down'][1]
+
+        if self.xvel > 0:
+            self.image = self.images['right'][self.index]
+        if self.xvel < 0:
+            self.image = self.images['left'][self.index]
+        if self.yvel < 0:
+            self.image = self.images['up'][self.index]
+        if self.yvel > 0:
+            self.image = self.images['down'][self.index]
+
     def update(self, left, right, up, down, platforms):
         if up:
             self.yvel = -MOVE_SPEED  # Лево = x- n
