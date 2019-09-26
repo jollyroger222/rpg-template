@@ -1,11 +1,7 @@
-import json
-import struct
-
 import pygame
 from pygame import *
 from game_platform import *
 from player import Player
-import socket
 
 WIN_WIDTH = 800  # Ширина создаваемого окна
 WIN_HEIGHT = 640  # Высота
@@ -13,6 +9,7 @@ DISPLAY = (WIN_WIDTH, WIN_HEIGHT)  # Группируем ширину и выс
 BACKGROUND_COLOR = "#004400"
 
 
+# камера
 class Camera(object):
     def __init__(self, camera_func, width, height):
         self.camera_func = camera_func
@@ -44,7 +41,6 @@ def main():
     pygame.display.set_caption("RPG")
 
     bg = Ground(0, 0)
-
     timer = pygame.time.Clock()
     hero = Player(155, 155)
     left = right = up = down = False
@@ -52,14 +48,16 @@ def main():
     coins_count = 0
 
     entities = pygame.sprite.Group()  # Все объекты
-    platforms = []  # то, во что мы будем врезаться или опираться
-    coins = []  # то, во что мы будем врезаться или опираться
+    platforms = pygame.sprite.Group()  # то, во что мы будем врезаться или опираться
+    coins = pygame.sprite.Group()  # монеты
 
+    # добавляем в фон в список объектов для рисования
     entities.add(bg)
 
     pygame.font.init()
     myfont = pygame.font.SysFont('Comic Sans MS', 30)
 
+    # карта
     level = [
         "----------------------------------",
         "-    s               s           -",
@@ -86,9 +84,7 @@ def main():
         "-                                -",
         "----------------------------------"]
 
-    print(len(level[0]) * 32)
-    print(len(level) * 32)
-
+    # добавляем объекты с карты в список
     x = 0
     y = 0
     for row in level:
@@ -96,31 +92,29 @@ def main():
             if col == "-":
                 pf = Platform(x, y)
                 entities.add(pf)
-                platforms.append(pf)
+                platforms.add(pf)
             if col == "s":
                 entities.add(Stone(x, y))
             if col == "w":
                 water = Water(x, y)
                 entities.add(water)
-                platforms.append(water)
+                platforms.add(water)
             if col == "c":
                 coin = Coin(x, y)
                 entities.add(coin)
-                coins.append(coin)
+                coins.add(coin)
 
             x += PLATFORM_WIDTH  # блоки платформы ставятся на ширине блоков
         y += PLATFORM_HEIGHT  # то же самое и с высотой
         x = 0  # на каждой новой строчке начинаем с нуля
+
+    # добавляем персонажа
     entities.add(hero)
+
+    # настройка камеры
     total_level_width = len(level[0]) * PLATFORM_WIDTH  # Высчитываем фактическую ширину уровня
     total_level_height = len(level) * PLATFORM_HEIGHT  # высоту
-
     camera = Camera(camera_configure, total_level_width, total_level_height)
-
-    # создаем сокет
-    sock = socket.socket()
-    # подключаемся к 127.0.0.1:9090
-    sock.connect(('127.0.0.1', 9090))
 
     while True:  # Основной цикл программы
         timer.tick(30)
@@ -150,60 +144,17 @@ def main():
             if e.type == QUIT:
                 raise SystemExit("QUIT")
 
+        # обновляем камеру относительно героя
         camera.update(hero)
-        hero.update(left, right, up, down, platforms)
+        # обновляем позицию персонажа
+        hero.update(left, right, up, down, platforms, coins)
 
-        for coin in coins:
-            if sprite.collide_rect(hero, coin):
-                coins.remove(coin)
-                entities.remove(coin)
-                coins_count += 1
-
-        # network lets do it
-        while True:
-            size_byte = sock.recv(2)
-            if size_byte:
-                break
-        print(size_byte)
-        # переводим байты в число
-        size = struct.unpack('<H', size_byte)[0]
-        # принимаем JSON строку
-        data = b''
-        while len(data) < size:
-            data += sock.recv(size)
-
-        data = data.decode('utf-8')
-        # десереализуем ответ из JSON
-        answer = json.loads(data)
-        my_id = answer['id']
-
-        players = filter(lambda x:x['id'] != my_id, answer['players'])
-
-        data_to_send = {
-            "id": my_id,
-            "x": hero.rect.x,
-            "y": hero.rect.y,
-            "xvel": hero.xvel,
-            "yvel": hero.yvel,
-            "coins": coins_count,
-            "index": hero.index
-        }
-        data = json.dumps(data_to_send).encode('utf-8')
-        size = len(data)
-        byte_size = struct.pack('<H', size)
-        sock.send(byte_size)
-        sock.send(data)
-
+        # рисуем все объекты на карте с учетом смещения камеры
         for e in entities:
             screen.blit(e.image, camera.apply(e))
 
-        for player in players:
-            guy = Player(0, 0)
-            guy.load(player)
-            screen.blit(guy.image, camera.apply(guy))
-
-
-        textsurface = myfont.render(f'Coins: {coins_count}', False, (255, 255, 255))
+        # рисуем надпись
+        textsurface = myfont.render(f'Coins: {hero.coins_count}', False, (255, 255, 255))
         screen.blit(textsurface, (20, 20))
 
         pygame.display.update()
